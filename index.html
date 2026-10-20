@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Kamera Live</title>
+<style>
+:root{--live:#ffd60a;--panel:#1c1c1e;--line:#3a3a3c;--dim:#8e8e93}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+[hidden]{display:none!important}
+html,body{height:100%;background:#000;color:#fff;overflow:hidden;font-family:-apple-system,"SF Pro Text",system-ui,Roboto,"Helvetica Neue",sans-serif;touch-action:manipulation}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+svg{display:block}
+
+/* ---------- Kamera ---------- */
+#app{position:fixed;inset:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.top{display:flex;justify-content:space-between;align-items:center;height:56px;padding:0 16px}
+.chip{display:flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:18px;background:var(--panel);font-size:14px;font-weight:500;transition:color .15s,opacity .15s}
+.chip svg{width:18px;height:18px}
+.chip.active{color:var(--live)}
+.chip.off{color:var(--dim)}
+.chip.off svg{opacity:.9}
+.slash{position:relative}
+.off .slash::after{content:"";position:absolute;left:-2px;right:-2px;top:50%;height:2px;background:currentColor;transform:rotate(-45deg);border-radius:1px}
+.stage{display:flex;align-items:center;justify-content:center;min-height:0}
+.frame{position:relative;height:100%;max-width:100%;aspect-ratio:3/4;overflow:hidden;border-radius:14px;background:#0c0c0c}
+#vf{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#vf.mirror{transform:scaleX(-1)}
+#liveBadge{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:4px 10px;border-radius:6px;background:var(--live);color:#000;font-size:12px;font-weight:700;letter-spacing:.04em;opacity:0;transition:opacity .15s}
+#liveBadge.on{opacity:1}
+#flashScreen{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .08s;z-index:50}
+#flashScreen.on{opacity:1}
+#msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:32px;font-size:15px;line-height:1.5;color:#c7c7cc}
+.bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:18px 28px 22px}
+.thumb{width:52px;height:52px;border-radius:10px;background:var(--panel) center/cover no-repeat;border:1.5px solid var(--line);justify-self:start}
+.flip{justify-self:end;width:52px;height:52px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center}
+.flip svg{width:24px;height:24px}
+.shutter{width:80px;height:80px;border-radius:50%;border:4px solid #fff;padding:4px}
+.shutter i{display:block;width:100%;height:100%;border-radius:50%;background:#fff;transition:transform .12s,background .12s}
+.shutter:active i{transform:scale(.88)}
+.shutter.busy{pointer-events:none}
+.shutter.busy i{background:var(--dim);transform:scale(.78)}
+#toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%);max-width:86%;padding:10px 16px;border-radius:12px;background:rgba(44,44,46,.96);font-size:14px;text-align:center;opacity:0;pointer-events:none;transition:opacity .2s;z-index:80}
+#toast.on{opacity:1}
+
+/* ---------- Pemutar live (dipakai galeri & penampil) ---------- */
+.stack{position:absolute;inset:0;transition:transform .35s ease;will-change:transform}
+.stack.playing{transform:scale(1.03)}
+.stack img,.stack canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;-webkit-user-drag:none;pointer-events:none}
+.stack canvas{opacity:0;transition:opacity .18s}
+.stack canvas.on{opacity:1}
+
+/* ---------- Galeri ---------- */
+.sheet{position:fixed;inset:0;z-index:20;background:#000;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.sheet.v{z-index:30}
+.shead{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 16px;flex:none}
+.shead h1{font-size:17px;font-weight:600}
+.link{color:var(--live);font-size:16px;padding:8px 4px}
+.link.danger{color:#ff453a}
+.grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:2px;align-content:start}
+.cell{position:relative;aspect-ratio:1;overflow:hidden;background:#111;touch-action:pan-y}
+.cell .tag{position:absolute;left:5px;bottom:5px;width:18px;height:18px;color:#fff;filter:drop-shadow(0 0 2px rgba(0,0,0,.6));z-index:2}
+.empty{grid-column:1/-1;padding:80px 32px;text-align:center;color:var(--dim);line-height:1.5}
+
+/* ---------- Penampil ---------- */
+.vstage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;touch-action:none}
+.vframe{position:relative;width:100%;height:100%;max-height:100%;overflow:hidden}
+.vframe .stack img,.vframe .stack canvas{object-fit:contain}
+.pill{position:absolute;top:10px;left:12px;display:flex;align-items:center;gap:5px;padding:4px 9px 4px 7px;border-radius:7px;background:rgba(60,60,62,.85);font-size:12px;font-weight:700;letter-spacing:.03em;z-index:3;transition:background .15s,color .15s}
+.pill svg{width:14px;height:14px}
+.pill.play{background:#fff;color:#000}
+.vhint{flex:none;text-align:center;color:var(--dim);font-size:13px;padding:8px}
+.vfoot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 14px 14px}
+.vfoot .nav{width:40px;height:40px;border-radius:20px;background:var(--panel);font-size:22px;line-height:1}
+.vfoot .act{flex:1;height:40px;border-radius:20px;background:var(--panel);font-size:14px;font-weight:500}
+.vfoot button:disabled{opacity:.35}
+@media (prefers-reduced-motion:reduce){.stack,.stack canvas,#liveBadge{transition:none}}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="top">
+    <button class="chip active" id="btnFlash" aria-label="Mode flash">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 2 4.5 13.5h6L9.5 22l9-11.5h-6z"/></svg><span>Auto</span>
+    </button>
+    <button class="chip active" id="btnLive" aria-label="Foto live">
+      <span class="slash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="9.6" stroke-dasharray="2 2.5"/></svg></span><span>Live</span>
+    </button>
+  </header>
+  <main class="stage">
+    <div class="frame">
+      <video id="vf" playsinline muted autoplay></video>
+      <div id="liveBadge">LIVE</div>
+      <div id="msg">Memulai kamera…</div>
+    </div>
+  </main>
+  <footer class="bar">
+    <button class="thumb" id="btnThumb" aria-label="Buka galeri"></button>
+    <button class="shutter" id="btnShutter" aria-label="Ambil foto"><i></i></button>
+    <button class="flip" id="btnFlip" aria-label="Balik kamera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.5L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.3 4.5l1.7-2"/><path d="M20 20v-4.5h-4.5"/></svg>
+    </button>
+  </footer>
+</div>
+<div id="flashScreen"></div>
+<div id="toast"></div>
+
+<section class="sheet" id="gallery" hidden>
+  <div class="shead"><button class="link" id="gBack">Kamera</button><h1>Galeri</h1><span style="width:60px"></span></div>
+  <div class="grid" id="grid"></div>
+</section>
+
+<section class="sheet v" id="viewer" hidden>
+  <div class="shead"><button class="link" id="vBack">Galeri</button><h1 id="vDate" style="font-size:14px;font-weight:500"></h1><button class="link danger" id="vDel">Hapus</button></div>
+  <div class="vstage" id="vStage">
+    <div class="vframe">
+      <div class="stack" id="vStack"><img id="vImg" alt="Foto"><canvas id="vCanvas"></canvas></div>
+      <span class="pill" id="vPill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="6.2"/><circle cx="12" cy="12" r="9.6" stroke-dasharray="2 2.5"/></svg>LIVE</span>
+    </div>
+  </div>
+  <div class="vhint" id="vHint">Tekan dan tahan foto untuk memutar</div>
+  <div class="vfoot">
+    <button class="nav" id="vPrev" aria-label="Sebelumnya">‹</button>
+    <button class="act" id="vShareImg">Bagikan foto</button>
+    <button class="act" id="vShareClip">Ekspor klip</button>
+    <button class="nav" id="vNext" aria-label="Berikutnya">›</button>
+  </div>
+</section>
+
+<script>
+/* =====================================================================
+   PENGATURAN LIVE PHOTO  (ubah di sini bila perlu)
+   ===================================================================== */
+const CFG = {
+  PRE: 1.5,          // detik sebelum jepretan (seperti iPhone)
+  POST: 1.5,         // detik sesudah jepretan  -> total 3 detik
+  FPS: 30,           // frame per detik klip live
+  LONG: 720,         // sisi terpanjang frame klip (px) - turunkan bila memori HP kecil
+  JPEG_FULL: 0.92,   // kualitas foto utama (resolusi penuh kamera)
+  JPEG_LIVE: 0.8,    // kualitas frame klip
+  FLASH_LEAD: 280    // ms flash menyala sebelum foto utama diambil
+};
+const N_PRE  = Math.round(CFG.PRE  * CFG.FPS);
+const N_POST = Math.round(CFG.POST * CFG.FPS);
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const toBlob = (c, q) => new Promise(r => c.toBlob(r, 'image/jpeg', q));
+const vf = $('vf');
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(t){ const e=$('toast'); e.textContent=t; e.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>e.classList.remove('on'),2400); }
+
+/* ---------- suara rana ---------- */
+let actx;
+function click(){
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(), g=actx.createGain(), t=actx.currentTime;
+    o.frequency.value=1700; g.gain.setValueAtTime(.14,t); g.gain.exponentialRampToValueAtTime(.001,t+.06);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+.07);
+  }catch(e){}
+}
+
+/* =====================================================================
+   DATABASE (IndexedDB)
+   ===================================================================== */
+const DB = {
+  db:null,
+  open(){ return new Promise((res,rej)=>{ const r=indexedDB.open('kamera-live',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('shots',{keyPath:'id',autoIncrement:true});
+    r.onsuccess=()=>{this.db=r.result;res()}; r.onerror=()=>rej(r.error); }); },
+  store(m){ return this.db.transaction('shots',m).objectStore('shots'); },
+  add(rec){ return new Promise((res,rej)=>{ const q=this.store('readwrite').add(rec); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); },
+  all(){ return new Promise((res,rej)=>{ const q=this.store('readonly').getAll(); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); },
+  del(id){ return new Promise((res,rej)=>{ const q=this.store('readwrite').delete(id); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error); }); }
+};
+
+/* =====================================================================
+   KAMERA + BUFFER FRAME BERGULIR (pre-roll)
+   ===================================================================== */
+let stream, track, facing='environment', torchOK=false, gen=0;
+let live=true, flashMode='auto', busy=false;
+
+// ring buffer
+let ring=[], ringIdx=0, ringCount=0, ringW=0, ringH=0, ringSrcW=0, lastT=0;
+let frozen=false, post=null, postStart=0, postResolve=null;
+
+function allocRing(){
+  const vw=vf.videoWidth, vh=vf.videoHeight, s=Math.min(1, CFG.LONG/Math.max(vw,vh));
+  ringW=Math.round(vw*s); ringH=Math.round(vh*s); ringSrcW=vw;
+  ring=Array.from({length:N_PRE},()=>{ const c=document.createElement('canvas'); c.width=ringW; c.height=ringH; return {c, x:c.getContext('2d',{alpha:false}), t:0}; });
+  ringIdx=0; ringCount=0;
+}
+function resetRing(){ ringIdx=0; ringCount=0; }
+
+function grab(t){
+  if(!vf.videoWidth) return;
+  if(!ring.length || ringSrcW!==vf.videoWidth) allocRing();
+  if(t-lastT < 1000/CFG.FPS-4) return;
+  lastT=t;
+  if(!frozen){
+    if(!live) return;
+    const s=ring[ringIdx]; s.x.drawImage(vf,0,0,ringW,ringH); s.t=t;
+    ringIdx=(ringIdx+1)%N_PRE; ringCount=Math.min(N_PRE,ringCount+1);
+  }else if(post){
+    const c=document.createElement('canvas'); c.width=ringW; c.height=ringH;
+    c.getContext('2d',{alpha:false}).drawImage(vf,0,0,ringW,ringH);
+    post.push({c,t});
+    if(t-postStart>=CFG.POST*1000 || post.length>=N_POST){ const r=postResolve; postResolve=null; r&&r(); }
+  }
+}
+function pump(g){
+  const cb=()=>{ if(g!==gen) return; grab(performance.now()); pump(g); };
+  if(vf.requestVideoFrameCallback) vf.requestVideoFrameCallback(cb); else requestAnimationFrame(cb);
+}
+
+async function startCamera(){
+  stopCamera();
+  const msg=$('msg'); msg.hidden=false; msg.textContent='Memulai kamera…';
+  if(!navigator.mediaDevices?.getUserMedia){
+    msg.textContent='Kamera hanya bisa dipakai lewat HTTPS atau localhost. Buka halaman ini dari alamat https://.'; return;
+  }
+  const attempts=[
+    {video:{facingMode:{ideal:facing},width:{ideal:1440},height:{ideal:1920},frameRate:{ideal:30}},audio:false},
+    {video:{facingMode:facing},audio:false},
+    {video:true,audio:false}
+  ];
+  let err;
+  for(const c of attempts){ try{ stream=await navigator.mediaDevices.getUserMedia(c); break; }catch(e){ err=e; } }
+  if(!stream){
+    msg.textContent = err && err.name==='NotAllowedError'
+      ? 'Akses kamera ditolak. Izinkan kamera di pengaturan browser, lalu muat ulang.'
+      : 'Kamera tidak bisa dibuka: '+(err&&err.message||'tidak diketahui');
+    return;
+  }
+  track=stream.getVideoTracks()[0];
+  const caps=track.getCapabilities?track.getCapabilities():{};
+  torchOK=!!caps.torch;
+  vf.srcObject=stream;
+  vf.classList.toggle('mirror',facing==='user');
+  try{ await vf.play(); }catch(e){}
+  msg.hidden=true;
+  ring=[]; frozen=false; post=null;
+  updateFlashUI();
+  pump(gen);
+}
+function stopCamera(){
+  gen++;
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  stream=null; track=null; vf.srcObject=null; ring=[]; frozen=false; post=null;
+}
+
+/* ---------- flash ---------- */
+const FL=['auto','on','off'], FL_LABEL={auto:'Auto',on:'Nyala',off:'Mati'};
+const canFlash=()=>facing==='user'||torchOK;
+function updateFlashUI(){
+  const b=$('btnFlash');
+  b.querySelector('span').textContent=FL_LABEL[flashMode];
+  b.classList.toggle('active',flashMode!=='off'); b.classList.toggle('off',flashMode==='off');
+  b.style.opacity=canFlash()?1:.45;
+}
+function sceneLuma(){
+  const c=document.createElement('canvas'); c.width=c.height=24;
+  const x=c.getContext('2d',{willReadFrequently:true}); x.drawImage(vf,0,0,24,24);
+  const d=x.getImageData(0,0,24,24).data; let s=0;
+  for(let i=0;i<d.length;i+=4) s+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+  return s/(d.length/4);
+}
+function decideFlash(){
+  if(flashMode==='off'||!canFlash()) return false;
+  if(flashMode==='on') return true;
+  return sceneLuma()<55;
+}
+async function flashOn(on){
+  if(facing==='user'){ $('flashScreen').classList.toggle('on',on); }
+  else if(torchOK){ try{ await track.applyConstraints({advanced:[{torch:on}]}); }catch(e){} }
+}
+
+/* =====================================================================
+   JEPRET
+   ===================================================================== */
+function snapshotRing(){
+  const out=[], n=ringCount, start=n<N_PRE?0:ringIdx;
+  for(let k=0;k<n;k++) out.push(ring[(start+k)%N_PRE]);
+  return out;
+}
+function collectPost(){
+  return new Promise(res=>{
+    post=[]; postStart=performance.now(); postResolve=res;
+    setTimeout(()=>{ if(postResolve){ const r=postResolve; postResolve=null; r(); } }, CFG.POST*1000+1200);
+  });
+}
+
+async function shoot(){
+  if(busy||!stream||!vf.videoWidth) return;
+  busy=true; $('btnShutter').classList.add('busy');
+  try{
+    click(); navigator.vibrate&&navigator.vibrate(8);
+    const useFlash=decideFlash();
+    if(useFlash){ await flashOn(true); await sleep(CFG.FLASH_LEAD); }
+
+    // ===== momen foto utama =====
+    const kc=document.createElement('canvas'); kc.width=vf.videoWidth; kc.height=vf.videoHeight;
+    kc.getContext('2d').drawImage(vf,0,0);
+    let pre=[], aft=[];
+    if(live){
+      pre=snapshotRing(); frozen=true;
+      $('liveBadge').classList.add('on');
+      setTimeout(()=>{ if(useFlash) flashOn(false); },150);
+      await collectPost(); aft=post||[]; post=null;
+    }else if(useFlash){ setTimeout(()=>flashOn(false),150); }
+    $('liveBadge').classList.remove('on');
+
+    const frames=[...pre,...aft];
+    const t0=frames.length?frames[0].t:0;
+    const times=frames.map(f=>Math.round(f.t-t0));
+    const [frameBlobs,key]=await Promise.all([
+      Promise.all(frames.map(f=>toBlob(f.c,CFG.JPEG_LIVE))),
+      toBlob(kc,CFG.JPEG_FULL)
+    ]);
+    const tc=document.createElement('canvas'), ts=360/Math.max(kc.width,kc.height);
+    tc.width=Math.round(kc.width*ts); tc.height=Math.round(kc.height*ts);
+    tc.getContext('2d').drawImage(kc,0,0,tc.width,tc.height);
+    const thumb=await toBlob(tc,.8);
+
+    await DB.add({ ts:Date.now(), key, thumb, frames:frameBlobs, times, keyIndex:pre.length,
+      w:ringW, h:ringH, kw:kc.width, kh:kc.height, flash:useFlash, facing });
+    await refreshItems();
+    toast(frames.length?'Foto live tersimpan':'Foto tersimpan');
+  }catch(e){
+    console.error(e); toast('Gagal menyimpan foto');
+  }finally{
+    frozen=false; post=null; resetRing();
+    $('liveBadge').classList.remove('on'); flashOn(false).catch?.(()=>{});
+    $('btnShutter').classList.remove('busy'); busy=false;
+  }
+}
+
+/* =====================================================================
+   PEMUTAR LIVE (frame demi frame di canvas — bukan elemen <video>)
+   ===================================================================== */
+class LivePlayer{
+  constructor(canvas,stack){ this.c=canvas; this.x=canvas.getContext('2d'); this.stack=stack; this.raf=0; this.playing=false; this.bms=[]; this.rec=null; this.tick=this.tick.bind(this); }
+  prepare(rec){
+    if(this.rec===rec) return;
+    this.release(); this.rec=rec; this.c.width=rec.w; this.c.height=rec.h;
+    const n=rec.frames.length; this.bms=new Array(n);
+    rec.frames.forEach((b,i)=>createImageBitmap(b).then(bm=>{ if(this.rec===rec) this.bms[i]=bm; else bm.close(); }).catch(()=>{}));
+  }
+  start(){
+    if(!this.rec||!this.rec.frames.length||this.playing) return;
+    this.playing=true; this.t0=performance.now(); this.i=0; this.shown=false;
+    this.stack.classList.add('playing');
+    this.raf=requestAnimationFrame(this.tick);
+    this.onstate&&this.onstate(true);
+  }
+  tick(now){
+    if(!this.playing) return;
+    const e=now-this.t0, times=this.rec.times, dur=times[times.length-1]+1000/CFG.FPS;
+    let i=this.i; while(i+1<times.length&&times[i+1]<=e) i++; this.i=i;
+    let k=i; while(k>=0&&!this.bms[k]) k--;
+    if(k>=0){ this.x.drawImage(this.bms[k],0,0,this.c.width,this.c.height); if(!this.shown){ this.shown=true; this.c.classList.add('on'); } }
+    if(e>=dur){ this.stop(); return; }
+    this.raf=requestAnimationFrame(this.tick);
+  }
+  stop(){
+    cancelAnimationFrame(this.raf);
+    const was=this.playing; this.playing=false;
+    this.c.classList.remove('on'); this.stack.classList.remove('playing');
+    if(was&&this.onstate) this.onstate(false);
+  }
+  release(){ this.stop(); this.bms.forEach(b=>b&&b.close&&b.close()); this.bms=[]; this.rec=null; }
+}
+
+/* =====================================================================
+   GALERI
+   ===================================================================== */
+let items=[], thumbURLs=[];
+async function refreshItems(){
+  items=(await DB.al
